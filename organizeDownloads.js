@@ -3,6 +3,15 @@ import os from "os";
 import fs from "fs";
 import path from "path";
 
+const logFile = "organizeDownloads.log";
+
+function log(message) {
+  const timeStamp = new Date().toISOString();
+  const logMessage = `${timeStamp}: ${message}\n`;
+  fs.appendFileSync(logFile, logMessage);
+  console.log(message);
+}
+
 const homeDir = os.homedir();
 
 const downloadsFolder = path.join(homeDir, "Downloads");
@@ -41,6 +50,7 @@ if (fs.existsSync(downloadsFolder)) {
           targetFolder = documentsFolder;
         } else {
           failedToMoveFiles.push(`${file} failed to move: Invalid Extension`);
+          log(`${file} failed to move: Invalid Extension`);
           return;
         }
 
@@ -48,36 +58,41 @@ if (fs.existsSync(downloadsFolder)) {
 
         if (fs.existsSync(targetFileFullName)) {
           failedToMoveFiles.push(file);
+          log(
+            `Failed to move: ${file} (File already exists in the destination folder)`
+          );
           return;
         }
 
         try {
           fs.renameSync(downloadsFileFullName, targetFileFullName);
           movedFiles.push(`${file} moved to ${targetFolder}`);
+          log(`${file} moved to ${targetFolder}`);
         } catch {
           failedToMoveFiles.push(`${file} failed to move to ${targetFolder}`);
+          log(`Error: ${file} failed to move to ${targetFolder}`);
         }
       }
     });
 
-    console.log("************************");
-    console.log("** MOVED FILES **");
-    console.log("************************");
+    log("\n************************");
+    log("** MOVED FILES **");
+    log("************************");
 
-    movedFiles.forEach((movedFile) => console.log(movedFile));
+    movedFiles.forEach((movedFile) => log(movedFile));
 
-    console.log(`\n${movedFiles.length} files moved!!`);
+    log(`\n${movedFiles.length} files moved!!`);
 
-    console.log("\n************************");
-    console.log("** FAILED TO MOVE FILES **");
-    console.log("************************\n");
+    log("\n************************");
+    log("** FAILED TO MOVE FILES **");
+    log("************************\n");
 
-    console.log(`${failedToMoveFiles.length} files failed to be moved!!`);
+    log(`${failedToMoveFiles.length} files failed to be moved!!`);
 
     failedToMoveFiles.forEach((failedMoveFile) => console.log(failedMoveFile));
   } else {
-    console.log("No files in Downloads folder");
+    log("No files in Downloads folder");
   }
 } else {
-  console.log("Invalid Downloads Folder");
+  log("Invalid Downloads Folder");
 }
