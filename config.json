@@ -1,0 +1,14 @@
+{
+  "extensions": {
+    "images": [".jpg", ".jpeg", ".png", ".gif", ".svg"],
+    "videos": [".mp4", ".avi", ".mkv"],
+    "music": [".mp3", ".wav", ".aac"],
+    "documents": [".pdf", ".docx", ".txt", ".xlsx", ".pptx"]
+  },
+  "folders": {
+    "images": "/Users/username/Pictures",
+    "videos": "/Users/username/Videos",
+    "music": "/Users/username/Music",
+    "documents": "/Users/username/Documents"
+  }
+}

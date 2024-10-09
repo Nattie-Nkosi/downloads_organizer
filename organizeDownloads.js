@@ -1,98 +1,151 @@
 #!/usr/bin/env node
 import os from "os";
-import fs from "fs";
+import fs from "fs/promises";
 import path from "path";
+import { Command } from "commander";
+import winston from "winston";
 
-const logFile = "organizeDownloads.log";
+(async () => {
+  // Set up the command-line interface
+  const program = new Command();
+  program
+    .version("1.0.0")
+    .description("Organize files in the Downloads folder")
+    .option("-s, --source <directory>", "Source directory to organize")
+    .option("-l, --log <file>", "Log file path", "organizeDownloads.log")
+    .option("-c, --config <file>", "Configuration file path")
+    .parse(process.argv);
 
-function log(message) {
-  const timeStamp = new Date().toISOString();
-  const logMessage = `${timeStamp}: ${message}\n`;
-  fs.appendFileSync(logFile, logMessage);
-  console.log(message);
-}
+  const options = program.opts();
 
-const homeDir = os.homedir();
+  // Set up the logger using Winston
+  const logger = winston.createLogger({
+    level: "info",
+    format: winston.format.combine(
+      winston.format.timestamp(),
+      winston.format.printf(({ timestamp, level, message }) => {
+        return `${timestamp} - ${level.toUpperCase()}: ${message}`;
+      })
+    ),
+    transports: [
+      new winston.transports.File({ filename: options.log }),
+      new winston.transports.Console(),
+    ],
+  });
 
-const downloadsFolder = path.join(homeDir, "Downloads");
-const picturesFolder = path.join(homeDir, "Pictures");
-const videosFolder = path.join(homeDir, "Videos");
-const musicFolder = path.join(homeDir, "Music");
-const documentsFolder = path.join(homeDir, "Documents");
+  // Load configuration from a file or use defaults
+  let config = {
+    extensions: {
+      images: [".jpg", ".png", ".jpeg", ".svg"],
+      videos: [".mp4", ".mkv"],
+      music: [".mp3", ".wav"],
+      documents: [".txt", ".pdf", ".docx", ".torrent", ".zip"],
+    },
+    folders: {
+      images: path.join(os.homedir(), "Pictures"),
+      videos: path.join(os.homedir(), "Videos"),
+      music: path.join(os.homedir(), "Music"),
+      documents: path.join(os.homedir(), "Documents"),
+    },
+  };
 
-const allowedImageExtensions = [".jpg", ".png", ".jpeg", ".svg"];
-const allowedVideoExtensions = [".mp4", ".mkv"];
-const allowedMusicExtensions = [".mp3", ".wav"];
-const allowedDocumentsExtensions = [".txt", ".pdf", ".docx"];
+  if (options.config) {
+    try {
+      const configContent = await fs.readFile(options.config, "utf-8");
+      config = JSON.parse(configContent);
+      logger.info("Configuration loaded successfully.");
+    } catch (err) {
+      logger.error(`Failed to load configuration file: ${err.message}`);
+      process.exit(1);
+    }
+  }
 
-const failedToMoveFiles = [];
-const movedFiles = [];
+  // Determine the source directory
+  const sourceDirectory =
+    options.source || path.join(os.homedir(), "Downloads");
 
-if (fs.existsSync(downloadsFolder)) {
-  const downloadsFolderFiles = fs.readdirSync(downloadsFolder);
+  /**
+   * Organize files in the specified directory.
+   */
+  async function organizeFiles() {
+    try {
+      const files = await fs.readdir(sourceDirectory);
+      if (files.length === 0) {
+        logger.info("No files found to organize.");
+        return;
+      }
 
-  if (downloadsFolderFiles.length > 0) {
-    downloadsFolderFiles.forEach((file) => {
-      const downloadsFileFullName = path.join(downloadsFolder, file);
+      for (const file of files) {
+        const filePath = path.join(sourceDirectory, file);
+        const fileStat = await fs.stat(filePath);
 
-      if (fs.statSync(downloadsFileFullName).isFile()) {
-        const extention = path.extname(file);
-
-        let targetFolder;
-
-        if (allowedImageExtensions.includes(extention)) {
-          targetFolder = picturesFolder;
-        } else if (allowedVideoExtensions.includes(extention)) {
-          targetFolder = videosFolder;
-        } else if (allowedMusicExtensions.includes(extention)) {
-          targetFolder = musicFolder;
-        } else if (allowedDocumentsExtensions.includes(extention)) {
-          targetFolder = documentsFolder;
-        } else {
-          failedToMoveFiles.push(`${file} failed to move: Invalid Extension`);
-          log(`${file} failed to move: Invalid Extension`);
-          return;
+        if (!fileStat.isFile()) {
+          continue; // Skip directories
         }
 
-        const targetFileFullName = path.join(targetFolder, file);
+        const fileExtension = path.extname(file).toLowerCase();
+        const destinationFolder = getDestinationFolder(fileExtension);
 
-        if (fs.existsSync(targetFileFullName)) {
-          failedToMoveFiles.push(file);
-          log(
-            `Failed to move: ${file} (File already exists in the destination folder)`
-          );
-          return;
+        if (!destinationFolder) {
+          logger.warn(`Unsupported file extension for file: ${file}`);
+          continue;
         }
+
+        const destinationPath = path.join(destinationFolder, file);
+        const finalDestinationPath = await resolveFileNameConflict(
+          destinationPath
+        );
 
         try {
-          fs.renameSync(downloadsFileFullName, targetFileFullName);
-          movedFiles.push(`${file} moved to ${targetFolder}`);
-          log(`${file} moved to ${targetFolder}`);
-        } catch {
-          failedToMoveFiles.push(`${file} failed to move to ${targetFolder}`);
-          log(`Error: ${file} failed to move to ${targetFolder}`);
+          await fs.rename(filePath, finalDestinationPath);
+          logger.info(`Moved file: ${file} to ${destinationFolder}`);
+        } catch (err) {
+          logger.error(`Failed to move file: ${file}. Error: ${err.message}`);
         }
       }
-    });
-
-    log("\n************************");
-    log("** MOVED FILES **");
-    log("************************");
-
-    movedFiles.forEach((movedFile) => log(movedFile));
-
-    log(`\n${movedFiles.length} files moved!!`);
-
-    log("\n************************");
-    log("** FAILED TO MOVE FILES **");
-    log("************************\n");
-
-    log(`${failedToMoveFiles.length} files failed to be moved!!`);
-
-    failedToMoveFiles.forEach((failedMoveFile) => console.log(failedMoveFile));
-  } else {
-    log("No files in Downloads folder");
+    } catch (err) {
+      logger.error(`Error accessing source directory: ${err.message}`);
+      process.exit(1);
+    }
   }
-} else {
-  log("Invalid Downloads Folder");
-}
+
+  /**
+   * Get the destination folder based on file extension.
+   * @param {string} extension - The file extension.
+   * @returns {string|null} - The destination folder path or null if unsupported.
+   */
+  function getDestinationFolder(extension) {
+    for (const [folderKey, extensions] of Object.entries(config.extensions)) {
+      if (extensions.includes(extension)) {
+        return config.folders[folderKey];
+      }
+    }
+    return null;
+  }
+
+  /**
+   * Resolve file name conflicts by appending a counter to the file name.
+   * @param {string} filePath - The intended file path.
+   * @returns {string} - A unique file path with no conflicts.
+   */
+  async function resolveFileNameConflict(filePath) {
+    let counter = 1;
+    let uniquePath = filePath;
+    const { dir, name, ext } = path.parse(filePath);
+
+    while (true) {
+      try {
+        await fs.access(uniquePath);
+        uniquePath = path.join(dir, `${name}(${counter})${ext}`);
+        counter++;
+      } catch {
+        // File does not exist
+        break;
+      }
+    }
+    return uniquePath;
+  }
+
+  // Start organizing files
+  await organizeFiles();
+})();
