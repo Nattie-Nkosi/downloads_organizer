@@ -6,9 +6,9 @@
     "documents": [".pdf", ".docx", ".txt", ".xlsx", ".pptx"]
   },
   "folders": {
-    "images": "/Users/username/Pictures",
-    "videos": "/Users/username/Videos",
-    "music": "/Users/username/Music",
-    "documents": "/Users/username/Documents"
+    "images": "/Users/nkosi/Pictures",
+    "videos": "/Users/nkosi/Videos",
+    "music": "/Users/nkosi/Music",
+    "documents": "/Users/nkosi/Documents"
   }
 }

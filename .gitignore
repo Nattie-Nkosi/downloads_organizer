@@ -1,2 +1,8 @@
-organizeDownloads.log
+# Dependencies
 node_modules
+
+# Log files
+*.log
+
+# History files (for undo functionality)
+*.history.json
